@@ -202,9 +202,9 @@ func setEdgeField(e ent.Edge, opts relOptions, childNode *schemast.UpsertSchema)
 }
 
 // upsertRelation takes 2 nodes and created the edges between them.
-func upsertRelation(nodeA *schemast.UpsertSchema, nodeB *schemast.UpsertSchema, opts relOptions, excludedSingularize []string) {
-	tableA := tableName(nodeA.Name)
-	tableB := tableName(nodeB.Name)
+func upsertRelation(nodeA *schemast.UpsertSchema, nodeB *schemast.UpsertSchema, opts relOptions, excludedSingularize, excludedCamelize []string) {
+	tableA := tableName(nodeA.Name, excludedSingularize, excludedCamelize)
+	tableB := tableName(nodeB.Name, excludedSingularize, excludedCamelize)
 	fromA := entEdge(tableA, nodeA.Name, nodeB, from, opts, excludedSingularize)
 	toB := entEdge(tableB, nodeB.Name, nodeA, to, opts, excludedSingularize)
 	nodeA.Edges = append(nodeA.Edges, toB)
@@ -212,7 +212,7 @@ func upsertRelation(nodeA *schemast.UpsertSchema, nodeB *schemast.UpsertSchema, 
 }
 
 // upsertManyToMany handles the creation of M2M relations.
-func upsertManyToMany(mutations map[string]schemast.Mutator, table *schema.Table, excludedSingularize []string) error {
+func upsertManyToMany(mutations map[string]schemast.Mutator, table *schema.Table, excludedSingularize, excludedCamelize []string) error {
 	tableA := table.ForeignKeys[0].RefTable
 	tableB := table.ForeignKeys[1].RefTable
 	var opts relOptions
@@ -227,8 +227,8 @@ func upsertManyToMany(mutations map[string]schemast.Mutator, table *schema.Table
 	if !ok {
 		return joinTableErr
 	}
-	opts.refName = tableName(nodeB.Name)
-	upsertRelation(nodeA, nodeB, opts, excludedSingularize)
+	opts.refName = tableName(nodeB.Name, excludedSingularize, excludedCamelize)
+	upsertRelation(nodeA, nodeB, opts, excludedSingularize, excludedCamelize)
 	return nil
 }
 
@@ -253,8 +253,8 @@ func typeName(tableName string, excludedSingularize, excludedCamelize []string) 
 	return camelize(excludedCamelize, singularize(excludedSingularize, tableName))
 }
 
-func tableName(typeName string) string {
-	return inflect.Underscore(inflect.Pluralize(typeName))
+func tableName(typeName string, excludedSingularize, excludedCamelize []string) string {
+	return underscore(excludedCamelize, pluralize(excludedSingularize, typeName))
 }
 
 // resolvePrimaryKey returns the primary key as an ent field for a given table.
@@ -280,7 +280,7 @@ func upsertNode(field fieldFunc, table *schema.Table, excludedSingularize, exclu
 	upsert := &schemast.UpsertSchema{
 		Name: typeName(table.Name, excludedSingularize, excludedCamelize),
 	}
-	if tableName(table.Name) != table.Name {
+	if tableName(table.Name, excludedSingularize, excludedCamelize) != table.Name {
 		upsert.Annotations = []entschema.Annotation{
 			entsql.Annotation{Table: table.Name},
 		}
@@ -358,13 +358,13 @@ func schemaMutations(field fieldFunc, tables []*schema.Table, excludedSingulariz
 	}
 	for _, table := range tables {
 		if t, ok := joinTables[table.Name]; ok {
-			err := upsertManyToMany(mutations, t, excludedSingularize)
+			err := upsertManyToMany(mutations, t, excludedSingularize, excludedCamelize)
 			if err != nil {
 				return nil, err
 			}
 			continue
 		}
-		upsertOneToX(mutations, table, excludedSingularize)
+		upsertOneToX(mutations, table, excludedSingularize, excludedCamelize)
 	}
 	ml := make([]schemast.Mutator, 0, len(mutations))
 	for _, mutator := range mutations {
@@ -378,7 +378,7 @@ func schemaMutations(field fieldFunc, tables []*schema.Table, excludedSingulariz
 // O2M (The "Many" side, keeps a reference to the "One" side).
 // O2M Two Types - Parent has a non-unique reference to Child, and Child has a unique back-reference to Parent
 // O2M Same Type - Parent has a non-unique reference to Child, and Child doesn't have a back-reference to Parent.
-func upsertOneToX(mutations map[string]schemast.Mutator, table *schema.Table, excludedSingularize []string) {
+func upsertOneToX(mutations map[string]schemast.Mutator, table *schema.Table, excludedSingularize, excludedCamelize []string) {
 	if table.ForeignKeys == nil {
 		return
 	}
@@ -398,7 +398,7 @@ func upsertOneToX(mutations map[string]schemast.Mutator, table *schema.Table, ex
 		colName := fk.Columns[0].Name
 		opts := relOptions{
 			uniqueEdgeFromParent: true,
-			refName:              tableName(child.Name),
+			refName:              tableName(child.Name, excludedSingularize, excludedCamelize),
 			edgeField:            colName,
 		}
 		if child.Name == parent.Name {
@@ -417,7 +417,7 @@ func upsertOneToX(mutations map[string]schemast.Mutator, table *schema.Table, ex
 		if !ok {
 			return
 		}
-		upsertRelation(parentNode, childNode, opts, excludedSingularize)
+		upsertRelation(parentNode, childNode, opts, excludedSingularize, excludedCamelize)
 	}
 }
 
@@ -446,4 +446,18 @@ func camelize(bypass []string, word string) string {
 		return strings.ToUpper(word)
 	}
 	return inflect.Camelize(word)
+}
+
+func pluralize(bypass []string, word string) string {
+	if contains(bypass, word) {
+		return word
+	}
+	return inflect.Pluralize(word)
+}
+
+func underscore(bypass []string, word string) string {
+	if contains(bypass, word) {
+		return strings.ToLower(word)
+	}
+	return inflect.Underscore(word)
 }
