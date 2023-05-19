@@ -449,14 +449,14 @@ func camelize(bypass []string, word string) string {
 }
 
 func pluralize(bypass []string, word string) string {
-	if contains(bypass, word) {
+	if !contains(bypass, word) {
 		return word
 	}
 	return inflect.Pluralize(word)
 }
 
 func underscore(bypass []string, word string) string {
-	if contains(bypass, word) {
+	if !contains(bypass, word) {
 		return strings.ToLower(word)
 	}
 	return inflect.Underscore(word)
