@@ -13,13 +13,17 @@ import (
 )
 
 var (
-	tablesFlag        tables
-	excludeTablesFlag tables
+	tablesFlag             tables
+	excludeTablesFlag      tables
+	excludeSingularizeFlag tables
+	excludeCamelizeFlag    tables
 )
 
 func init() {
 	flag.Var(&tablesFlag, "tables", "comma-separated list of tables to inspect (all if empty)")
 	flag.Var(&excludeTablesFlag, "exclude-tables", "comma-separated list of tables to exclude")
+	flag.Var(&excludeSingularizeFlag, "exclude-singularize", "comma-separated list of tables to exclude singularize")
+	flag.Var(&excludeCamelizeFlag, "exclude-camelize", "comma-separated list of tables to exclude camelize")
 }
 
 func main() {
@@ -42,6 +46,8 @@ func main() {
 	i, err := entimport.NewImport(
 		entimport.WithTables(tablesFlag),
 		entimport.WithExcludedTables(excludeTablesFlag),
+		entimport.WithExcludedSingularize(excludeSingularizeFlag),
+		entimport.WithExcludedCamelize(excludeCamelizeFlag),
 		entimport.WithDriver(drv),
 	)
 	if err != nil {

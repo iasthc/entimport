@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"ariga.io/atlas/sql/schema"
 	"github.com/iasthc/entimport/internal/mux"
@@ -48,10 +49,12 @@ type (
 
 	// ImportOptions are the options passed on to every SchemaImporter.
 	ImportOptions struct {
-		tables         []string
-		excludedTables []string
-		schemaPath     string
-		driver         *mux.ImportDriver
+		tables              []string
+		excludedTables      []string
+		excludedSingularize []string
+		excludedCamelize    []string
+		schemaPath          string
+		driver              *mux.ImportDriver
 	}
 
 	// ImportOption allows for managing import configuration using functional options.
@@ -76,6 +79,20 @@ func WithTables(tables []string) ImportOption {
 func WithExcludedTables(tables []string) ImportOption {
 	return func(i *ImportOptions) {
 		i.excludedTables = tables
+	}
+}
+
+// WithExcludedSingularize supplies the set of tables to exclude singularize.
+func WithExcludedSingularize(tables []string) ImportOption {
+	return func(i *ImportOptions) {
+		i.excludedSingularize = tables
+	}
+}
+
+// WithExcludedCamelize supplies the set of tables to exclude camelize.
+func WithExcludedCamelize(tables []string) ImportOption {
+	return func(i *ImportOptions) {
+		i.excludedCamelize = tables
 	}
 }
 
@@ -130,7 +147,7 @@ func WriteSchema(mutations []schemast.Mutator, opts ...ImportOption) error {
 }
 
 // entEdge creates an edge based on the given params and direction.
-func entEdge(nodeName, nodeType string, currentNode *schemast.UpsertSchema, dir edgeDir, opts relOptions) (e ent.Edge) {
+func entEdge(nodeName, nodeType string, currentNode *schemast.UpsertSchema, dir edgeDir, opts relOptions, excludedSingularize []string) (e ent.Edge) {
 	var desc *edge.Descriptor
 	switch dir {
 	case to:
@@ -138,7 +155,7 @@ func entEdge(nodeName, nodeType string, currentNode *schemast.UpsertSchema, dir 
 		desc = e.Descriptor()
 		if opts.uniqueEdgeToChild {
 			desc.Unique = true
-			desc.Name = inflect.Singularize(nodeName)
+			desc.Name = singularize(excludedSingularize, nodeName)
 		}
 		if opts.recursive {
 			desc.Name = "child_" + desc.Name
@@ -148,7 +165,7 @@ func entEdge(nodeName, nodeType string, currentNode *schemast.UpsertSchema, dir 
 		desc = e.Descriptor()
 		if opts.uniqueEdgeFromParent {
 			desc.Unique = true
-			desc.Name = inflect.Singularize(nodeName)
+			desc.Name = singularize(excludedSingularize, nodeName)
 		}
 		if opts.edgeField != "" {
 			setEdgeField(e, opts, currentNode)
@@ -157,7 +174,7 @@ func entEdge(nodeName, nodeType string, currentNode *schemast.UpsertSchema, dir 
 		// because there can be multiple references from one node to another.
 		refName := opts.refName
 		if opts.uniqueEdgeToChild {
-			refName = inflect.Singularize(refName)
+			refName = singularize(excludedSingularize, refName)
 		}
 		desc.RefName = refName
 		if opts.recursive {
@@ -185,17 +202,17 @@ func setEdgeField(e ent.Edge, opts relOptions, childNode *schemast.UpsertSchema)
 }
 
 // upsertRelation takes 2 nodes and created the edges between them.
-func upsertRelation(nodeA *schemast.UpsertSchema, nodeB *schemast.UpsertSchema, opts relOptions) {
+func upsertRelation(nodeA *schemast.UpsertSchema, nodeB *schemast.UpsertSchema, opts relOptions, excludedSingularize []string) {
 	tableA := tableName(nodeA.Name)
 	tableB := tableName(nodeB.Name)
-	fromA := entEdge(tableA, nodeA.Name, nodeB, from, opts)
-	toB := entEdge(tableB, nodeB.Name, nodeA, to, opts)
+	fromA := entEdge(tableA, nodeA.Name, nodeB, from, opts, excludedSingularize)
+	toB := entEdge(tableB, nodeB.Name, nodeA, to, opts, excludedSingularize)
 	nodeA.Edges = append(nodeA.Edges, toB)
 	nodeB.Edges = append(nodeB.Edges, fromA)
 }
 
 // upsertManyToMany handles the creation of M2M relations.
-func upsertManyToMany(mutations map[string]schemast.Mutator, table *schema.Table) error {
+func upsertManyToMany(mutations map[string]schemast.Mutator, table *schema.Table, excludedSingularize []string) error {
 	tableA := table.ForeignKeys[0].RefTable
 	tableB := table.ForeignKeys[1].RefTable
 	var opts relOptions
@@ -211,7 +228,7 @@ func upsertManyToMany(mutations map[string]schemast.Mutator, table *schema.Table
 		return joinTableErr
 	}
 	opts.refName = tableName(nodeB.Name)
-	upsertRelation(nodeA, nodeB, opts)
+	upsertRelation(nodeA, nodeB, opts, excludedSingularize)
 	return nil
 }
 
@@ -232,8 +249,8 @@ func isJoinTable(table *schema.Table) bool {
 	return true
 }
 
-func typeName(tableName string) string {
-	return inflect.Camelize(inflect.Singularize(tableName))
+func typeName(tableName string, excludedSingularize, excludedCamelize []string) string {
+	return camelize(excludedCamelize, singularize(excludedSingularize, tableName))
 }
 
 func tableName(typeName string) string {
@@ -259,9 +276,9 @@ func resolvePrimaryKey(field fieldFunc, table *schema.Table) (f ent.Field, err e
 }
 
 // upsertNode handles the creation of a node from a given table.
-func upsertNode(field fieldFunc, table *schema.Table) (*schemast.UpsertSchema, error) {
+func upsertNode(field fieldFunc, table *schema.Table, excludedSingularize, excludedCamelize []string) (*schemast.UpsertSchema, error) {
 	upsert := &schemast.UpsertSchema{
-		Name: typeName(table.Name),
+		Name: typeName(table.Name, excludedSingularize, excludedCamelize),
 	}
 	if tableName(table.Name) != table.Name {
 		upsert.Annotations = []entschema.Annotation{
@@ -325,7 +342,7 @@ func applyColumnAttributes(f ent.Field, col *schema.Column) {
 }
 
 // schemaMutations is in charge of creating all the schema mutations needed for an ent schema.
-func schemaMutations(field fieldFunc, tables []*schema.Table) ([]schemast.Mutator, error) {
+func schemaMutations(field fieldFunc, tables []*schema.Table, excludedSingularize, excludedCamelize []string) ([]schemast.Mutator, error) {
 	mutations := make(map[string]schemast.Mutator)
 	joinTables := make(map[string]*schema.Table)
 	for _, table := range tables {
@@ -333,7 +350,7 @@ func schemaMutations(field fieldFunc, tables []*schema.Table) ([]schemast.Mutato
 			joinTables[table.Name] = table
 			continue
 		}
-		node, err := upsertNode(field, table)
+		node, err := upsertNode(field, table, excludedSingularize, excludedCamelize)
 		if err != nil {
 			return nil, fmt.Errorf("entimport: issue with table %v: %w", table.Name, err)
 		}
@@ -341,13 +358,13 @@ func schemaMutations(field fieldFunc, tables []*schema.Table) ([]schemast.Mutato
 	}
 	for _, table := range tables {
 		if t, ok := joinTables[table.Name]; ok {
-			err := upsertManyToMany(mutations, t)
+			err := upsertManyToMany(mutations, t, excludedSingularize)
 			if err != nil {
 				return nil, err
 			}
 			continue
 		}
-		upsertOneToX(mutations, table)
+		upsertOneToX(mutations, table, excludedSingularize)
 	}
 	ml := make([]schemast.Mutator, 0, len(mutations))
 	for _, mutator := range mutations {
@@ -361,7 +378,7 @@ func schemaMutations(field fieldFunc, tables []*schema.Table) ([]schemast.Mutato
 // O2M (The "Many" side, keeps a reference to the "One" side).
 // O2M Two Types - Parent has a non-unique reference to Child, and Child has a unique back-reference to Parent
 // O2M Same Type - Parent has a non-unique reference to Child, and Child doesn't have a back-reference to Parent.
-func upsertOneToX(mutations map[string]schemast.Mutator, table *schema.Table) {
+func upsertOneToX(mutations map[string]schemast.Mutator, table *schema.Table, excludedSingularize []string) {
 	if table.ForeignKeys == nil {
 		return
 	}
@@ -400,6 +417,33 @@ func upsertOneToX(mutations map[string]schemast.Mutator, table *schema.Table) {
 		if !ok {
 			return
 		}
-		upsertRelation(parentNode, childNode, opts)
+		upsertRelation(parentNode, childNode, opts, excludedSingularize)
 	}
+}
+
+func index[E comparable](s []E, v E) int {
+	for i, vs := range s {
+		if v == vs {
+			return i
+		}
+	}
+	return -1
+}
+
+func contains[E comparable](s []E, v E) bool {
+	return index(s, v) >= 0
+}
+
+func singularize(bypass []string, word string) string {
+	if contains(bypass, word) {
+		return word
+	}
+	return inflect.Singularize(word)
+}
+
+func camelize(bypass []string, word string) string {
+	if contains(bypass, word) {
+		return strings.ToUpper(word)
+	}
+	return inflect.Camelize(word)
 }
