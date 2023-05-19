@@ -1,4 +1,4 @@
-module ariga.io/entimport
+module github.com/iasthc/entimport
 
 go 1.19
 

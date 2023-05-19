@@ -13,8 +13,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ariga.io/entimport/internal/entimport"
-	"ariga.io/entimport/internal/mux"
+	"github.com/iasthc/entimport/internal/entimport"
+	"github.com/iasthc/entimport/internal/mux"
 
 	"entgo.io/ent/dialect"
 	"github.com/go-openapi/inflect"
