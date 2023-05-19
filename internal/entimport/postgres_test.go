@@ -8,7 +8,7 @@ import (
 	"go/token"
 	"testing"
 
-	"ariga.io/atlas/sql/schema"
+	"github.com/iasthc/atlas/sql/schema"
 
 	"github.com/iasthc/entimport/internal/entimport"
 

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"ariga.io/atlas/sql/schema"
+	"github.com/iasthc/atlas/sql/schema"
 	"github.com/iasthc/entimport/internal/mux"
 
 	"entgo.io/contrib/entproto"
@@ -39,7 +39,7 @@ type (
 	}
 
 	// fieldFunc receives an Atlas column and converts it to an Ent field.
-	fieldFunc func(column *schema.Column, index int) (f ent.Field, err error)
+	fieldFunc func(column *schema.Column) (f ent.Field, err error)
 
 	// SchemaImporter is the interface that wraps the SchemaMutations method.
 	SchemaImporter interface {
@@ -249,7 +249,7 @@ func resolvePrimaryKey(field fieldFunc, table *schema.Table) (f ent.Field, err e
 	if len(table.PrimaryKey.Parts) != 1 {
 		return nil, fmt.Errorf("entimport: invalid primary key, single part key must be present (table: %v, got: %v parts)", table.Name, len(table.PrimaryKey.Parts))
 	}
-	if f, err = field(table.PrimaryKey.Parts[0].C, 0); err != nil {
+	if f, err = field(table.PrimaryKey.Parts[0].C); err != nil {
 		return nil, err
 	}
 	d := f.Descriptor()
@@ -286,13 +286,13 @@ func upsertNode(field fieldFunc, table *schema.Table) (*schemast.UpsertSchema, e
 		fields[pk.Descriptor().StorageKey] = pk
 		upsert.Fields = append(upsert.Fields, pk)
 	}
-	for idx, column := range table.Columns {
+	for _, column := range table.Columns {
 		if table.PrimaryKey != nil &&
 			len(table.PrimaryKey.Parts) != 0 &&
 			table.PrimaryKey.Parts[0].C.Name == column.Name {
 			continue
 		}
-		fld, err := field(column, idx)
+		fld, err := field(column)
 		if err != nil {
 			return nil, err
 		}
@@ -320,17 +320,16 @@ func upsertNode(field fieldFunc, table *schema.Table) (*schemast.UpsertSchema, e
 }
 
 // applyColumnAttributes adds column attributes to a given ent field.
-func applyColumnAttributes(f ent.Field, col *schema.Column, idx int) {
+func applyColumnAttributes(f ent.Field, col *schema.Column) {
 	desc := f.Descriptor()
 	desc.Optional = col.Type.Null
 	for _, attr := range col.Attrs {
 		if a, ok := attr.(*schema.Comment); ok {
 			desc.Comment = a.Text
 		}
-		fmt.Println(attr.(*schema.Comment))
 	}
 	desc.Annotations = []entschema.Annotation{
-		entproto.Field(idx + 1),
+		entproto.Field(int(col.Number)),
 	}
 }
 

@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ariga.io/atlas/sql/mysql"
-	"ariga.io/atlas/sql/postgres"
-	"ariga.io/atlas/sql/schema"
+	"github.com/iasthc/atlas/sql/mysql"
+	"github.com/iasthc/atlas/sql/postgres"
+	"github.com/iasthc/atlas/sql/schema"
 	"github.com/iasthc/entimport/internal/mux"
 
 	"github.com/stretchr/testify/mock"

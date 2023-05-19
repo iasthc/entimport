@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"ariga.io/atlas/sql/postgres"
-	"ariga.io/atlas/sql/schema"
+	"github.com/iasthc/atlas/sql/postgres"
+	"github.com/iasthc/atlas/sql/schema"
 
 	"entgo.io/contrib/schemast"
 	"entgo.io/ent"
@@ -54,7 +54,7 @@ func (p *Postgres) SchemaMutations(ctx context.Context) ([]schemast.Mutator, err
 	return schemaMutations(p.field, tables)
 }
 
-func (p *Postgres) field(column *schema.Column, index int) (f ent.Field, err error) {
+func (p *Postgres) field(column *schema.Column) (f ent.Field, err error) {
 	name := column.Name
 	switch typ := column.Type.Type.(type) {
 	case *schema.BinaryType:
@@ -82,7 +82,7 @@ func (p *Postgres) field(column *schema.Column, index int) (f ent.Field, err err
 	default:
 		return nil, fmt.Errorf("entimport: unsupported type %q for column %v", typ, column.Name)
 	}
-	applyColumnAttributes(f, column, index)
+	applyColumnAttributes(f, column)
 	return f, err
 }
 

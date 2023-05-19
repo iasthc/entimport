@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"net/url"
 
-	atlasmysql "ariga.io/atlas/sql/mysql"
-	"ariga.io/atlas/sql/postgres"
+	atlasmysql "github.com/iasthc/atlas/sql/mysql"
+	"github.com/iasthc/atlas/sql/postgres"
 
 	"entgo.io/ent/dialect"
 	"github.com/go-sql-driver/mysql"
