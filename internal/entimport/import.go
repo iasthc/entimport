@@ -8,6 +8,7 @@ import (
 	"ariga.io/atlas/sql/schema"
 	"github.com/iasthc/entimport/internal/mux"
 
+	"entgo.io/contrib/entproto"
 	"entgo.io/contrib/schemast"
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
@@ -38,7 +39,7 @@ type (
 	}
 
 	// fieldFunc receives an Atlas column and converts it to an Ent field.
-	fieldFunc func(column *schema.Column) (f ent.Field, err error)
+	fieldFunc func(column *schema.Column, index int) (f ent.Field, err error)
 
 	// SchemaImporter is the interface that wraps the SchemaMutations method.
 	SchemaImporter interface {
@@ -248,10 +249,14 @@ func resolvePrimaryKey(field fieldFunc, table *schema.Table) (f ent.Field, err e
 	if len(table.PrimaryKey.Parts) != 1 {
 		return nil, fmt.Errorf("entimport: invalid primary key, single part key must be present (table: %v, got: %v parts)", table.Name, len(table.PrimaryKey.Parts))
 	}
-	if f, err = field(table.PrimaryKey.Parts[0].C); err != nil {
+	if f, err = field(table.PrimaryKey.Parts[0].C, 0); err != nil {
 		return nil, err
 	}
-	if d := f.Descriptor(); d.Name != "id" {
+	d := f.Descriptor()
+	d.Annotations = []entschema.Annotation{
+		entproto.Field(1),
+	}
+	if d.Name != "id" {
 		d.StorageKey = d.Name
 		d.Name = "id"
 	}
@@ -263,10 +268,11 @@ func upsertNode(field fieldFunc, table *schema.Table) (*schemast.UpsertSchema, e
 	upsert := &schemast.UpsertSchema{
 		Name: typeName(table.Name),
 	}
+	upsert.Annotations = []entschema.Annotation{
+		entproto.Message(),
+	}
 	if tableName(table.Name) != table.Name {
-		upsert.Annotations = []entschema.Annotation{
-			entsql.Annotation{Table: table.Name},
-		}
+		upsert.Annotations = append(upsert.Annotations, entsql.Annotation{Table: table.Name})
 	}
 	fields := make(map[string]ent.Field, len(upsert.Fields))
 	for _, f := range upsert.Fields {
@@ -280,13 +286,13 @@ func upsertNode(field fieldFunc, table *schema.Table) (*schemast.UpsertSchema, e
 		fields[pk.Descriptor().StorageKey] = pk
 		upsert.Fields = append(upsert.Fields, pk)
 	}
-	for _, column := range table.Columns {
+	for idx, column := range table.Columns {
 		if table.PrimaryKey != nil &&
 			len(table.PrimaryKey.Parts) != 0 &&
 			table.PrimaryKey.Parts[0].C.Name == column.Name {
 			continue
 		}
-		fld, err := field(column)
+		fld, err := field(column, idx)
 		if err != nil {
 			return nil, err
 		}
@@ -314,13 +320,17 @@ func upsertNode(field fieldFunc, table *schema.Table) (*schemast.UpsertSchema, e
 }
 
 // applyColumnAttributes adds column attributes to a given ent field.
-func applyColumnAttributes(f ent.Field, col *schema.Column) {
+func applyColumnAttributes(f ent.Field, col *schema.Column, idx int) {
 	desc := f.Descriptor()
 	desc.Optional = col.Type.Null
 	for _, attr := range col.Attrs {
 		if a, ok := attr.(*schema.Comment); ok {
 			desc.Comment = a.Text
 		}
+		fmt.Println(attr.(*schema.Comment))
+	}
+	desc.Annotations = []entschema.Annotation{
+		entproto.Field(idx + 1),
 	}
 }
 
