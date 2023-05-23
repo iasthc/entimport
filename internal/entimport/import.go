@@ -278,8 +278,12 @@ func upsertNode(field fieldFunc, table *schema.Table) (*schemast.UpsertSchema, e
 		Name: typeName(table.Name),
 	}
 	upsert.Annotations = []entschema.Annotation{
-		entproto.Message(),
-		entproto.Service(),
+		entproto.Message(
+			entproto.PackageName("api.ent.service.v1"),
+		),
+		entproto.Service(
+			entproto.Methods(entproto.MethodCreate | entproto.MethodGet | entproto.MethodUpdate | entproto.MethodList | entproto.MethodBatchCreate),
+		),
 	}
 	if tableName(table.Name) != table.Name {
 		upsert.Annotations = append(upsert.Annotations, entsql.Annotation{Table: table.Name})
