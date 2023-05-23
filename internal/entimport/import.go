@@ -25,6 +25,8 @@ const (
 )
 
 var joinTableErr = errors.New("entimport: join tables must be inspected with ref tables - append `tables` flag")
+var tableColumnAttNum = map[string]map[string]int16{}
+var tableOID = map[string]int64{}
 
 type (
 	edgeDir int
@@ -39,7 +41,7 @@ type (
 	}
 
 	// fieldFunc receives an Atlas column and converts it to an Ent field.
-	fieldFunc func(column *schema.Column) (f ent.Field, err error)
+	fieldFunc func(tableName string, column *schema.Column) (f ent.Field, err error)
 
 	// SchemaImporter is the interface that wraps the SchemaMutations method.
 	SchemaImporter interface {
@@ -133,6 +135,7 @@ func WriteSchema(mutations []schemast.Mutator, opts ...ImportOption) error {
 // entEdge creates an edge based on the given params and direction.
 func entEdge(nodeName, nodeType string, currentNode *schemast.UpsertSchema, dir edgeDir, opts relOptions) (e ent.Edge) {
 	var desc *edge.Descriptor
+	num := 1000
 	switch dir {
 	case to:
 		e = edge.To(nodeName, ent.Schema.Type)
@@ -143,6 +146,7 @@ func entEdge(nodeName, nodeType string, currentNode *schemast.UpsertSchema, dir 
 		}
 		if opts.recursive {
 			desc.Name = "child_" + desc.Name
+			num += 500
 		}
 	case from:
 		e = edge.From(nodeName, ent.Schema.Type)
@@ -164,9 +168,14 @@ func entEdge(nodeName, nodeType string, currentNode *schemast.UpsertSchema, dir 
 		if opts.recursive {
 			desc.Name = "parent_" + desc.Name
 			desc.RefName = "child_" + desc.RefName
+			num += 500
 		}
+		num += 1000
 	}
 	desc.Type = nodeType
+	desc.Annotations = []entschema.Annotation{
+		entproto.Field(int(tableColumnAttNum[opts.refName][opts.edgeField]) + int(tableOID[opts.refName]) + num),
+	}
 	return e
 }
 
@@ -249,7 +258,7 @@ func resolvePrimaryKey(field fieldFunc, table *schema.Table) (f ent.Field, err e
 	if len(table.PrimaryKey.Parts) != 1 {
 		return nil, fmt.Errorf("entimport: invalid primary key, single part key must be present (table: %v, got: %v parts)", table.Name, len(table.PrimaryKey.Parts))
 	}
-	if f, err = field(table.PrimaryKey.Parts[0].C); err != nil {
+	if f, err = field(table.Name, table.PrimaryKey.Parts[0].C); err != nil {
 		return nil, err
 	}
 	d := f.Descriptor()
@@ -270,6 +279,7 @@ func upsertNode(field fieldFunc, table *schema.Table) (*schemast.UpsertSchema, e
 	}
 	upsert.Annotations = []entschema.Annotation{
 		entproto.Message(),
+		entproto.Service(),
 	}
 	if tableName(table.Name) != table.Name {
 		upsert.Annotations = append(upsert.Annotations, entsql.Annotation{Table: table.Name})
@@ -292,7 +302,7 @@ func upsertNode(field fieldFunc, table *schema.Table) (*schemast.UpsertSchema, e
 			table.PrimaryKey.Parts[0].C.Name == column.Name {
 			continue
 		}
-		fld, err := field(column)
+		fld, err := field(table.Name, column)
 		if err != nil {
 			return nil, err
 		}
@@ -320,7 +330,7 @@ func upsertNode(field fieldFunc, table *schema.Table) (*schemast.UpsertSchema, e
 }
 
 // applyColumnAttributes adds column attributes to a given ent field.
-func applyColumnAttributes(f ent.Field, col *schema.Column) {
+func applyColumnAttributes(table string, f ent.Field, col *schema.Column) {
 	desc := f.Descriptor()
 	desc.Optional = col.Type.Null
 	for _, attr := range col.Attrs {
@@ -331,6 +341,23 @@ func applyColumnAttributes(f ent.Field, col *schema.Column) {
 	desc.Annotations = []entschema.Annotation{
 		entproto.Field(int(col.Number)),
 	}
+	switch typ := col.Type.Type.(type) {
+	case *schema.JSONType:
+		// desc.Annotations = append(desc.Annotations, entproto.Skip())
+	case *schema.EnumType:
+		r := map[string]int32{}
+		for idx, val := range typ.Values {
+			r[val] = int32(idx)
+		}
+		desc.Default = typ.Values[0]
+		desc.Annotations = append(desc.Annotations, entproto.Enum(r))
+	}
+	tn := tableName(table)
+	if tableColumnAttNum[tn] == nil {
+		tableColumnAttNum[tn] = map[string]int16{}
+	}
+	tableColumnAttNum[tn][col.Name] = col.Number
+	tableOID[tn] = col.TableOID
 }
 
 // schemaMutations is in charge of creating all the schema mutations needed for an ent schema.

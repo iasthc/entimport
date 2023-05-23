@@ -2,7 +2,6 @@ package entimport
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/iasthc/atlas/sql/postgres"
@@ -54,7 +53,7 @@ func (p *Postgres) SchemaMutations(ctx context.Context) ([]schemast.Mutator, err
 	return schemaMutations(p.field, tables)
 }
 
-func (p *Postgres) field(column *schema.Column) (f ent.Field, err error) {
+func (p *Postgres) field(tableName string, column *schema.Column) (f ent.Field, err error) {
 	name := column.Name
 	switch typ := column.Type.Type.(type) {
 	case *schema.BinaryType:
@@ -70,7 +69,8 @@ func (p *Postgres) field(column *schema.Column) (f ent.Field, err error) {
 	case *schema.IntegerType:
 		f = p.convertInteger(typ, name)
 	case *schema.JSONType:
-		f = field.JSON(name, json.RawMessage{})
+		// f = field.JSON(name, json.RawMessage{})
+		f = field.String(name)
 	case *schema.StringType:
 		f = field.String(name)
 	case *schema.TimeType:
@@ -82,7 +82,7 @@ func (p *Postgres) field(column *schema.Column) (f ent.Field, err error) {
 	default:
 		return nil, fmt.Errorf("entimport: unsupported type %q for column %v", typ, column.Name)
 	}
-	applyColumnAttributes(f, column)
+	applyColumnAttributes(tableName, f, column)
 	return f, err
 }
 

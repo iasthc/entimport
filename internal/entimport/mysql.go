@@ -59,7 +59,7 @@ func (m *MySQL) SchemaMutations(ctx context.Context) ([]schemast.Mutator, error)
 	return schemaMutations(m.field, tables)
 }
 
-func (m *MySQL) field(column *schema.Column) (f ent.Field, err error) {
+func (m *MySQL) field(tableName string, column *schema.Column) (f ent.Field, err error) {
 	name := column.Name
 	switch typ := column.Type.Type.(type) {
 	case *schema.BinaryType:
@@ -83,7 +83,7 @@ func (m *MySQL) field(column *schema.Column) (f ent.Field, err error) {
 	default:
 		return nil, fmt.Errorf("entimport: unsupported type %q for column %v", typ, column.Name)
 	}
-	applyColumnAttributes(f, column)
+	applyColumnAttributes(tableName, f, column)
 	return f, err
 }
 
