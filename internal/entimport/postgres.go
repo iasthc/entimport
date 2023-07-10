@@ -53,9 +53,10 @@ func (p *Postgres) SchemaMutations(ctx context.Context) ([]schemast.Mutator, err
 		}
 	}
 	if p.inflects != nil {
+		inflects = map[string]string{}
 		for _, i := range p.inflects {
-			inflect.AddSingular(strings.ToLower(i), strings.ToUpper(i))
 			inflect.AddAcronym(strings.ToUpper(i))
+			inflects[strings.ToLower(i)] = strings.ToUpper(i)
 		}
 	}
 	return schemaMutations(p.field, tables)

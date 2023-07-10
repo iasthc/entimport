@@ -29,6 +29,7 @@ const (
 var joinTableErr = errors.New("entimport: join tables must be inspected with ref tables - append `tables` flag")
 var tableColumnAttNum = map[string]map[string]int16{}
 var tableOID = map[string]int64{}
+var inflects = map[string]string{}
 
 type (
 	edgeDir int
@@ -260,11 +261,11 @@ func isJoinTable(table *schema.Table) bool {
 func typeName(tableName string) string {
 	name := ""
 	ts := strings.Split(tableName, "_")
-	for idx, t := range ts {
-		if len(ts) != idx+1 && strings.HasSuffix(t, "s") {
-			name += inflect.Camelize(t)
+	for _, t := range ts {
+		if up, ok := inflects[strings.ToLower(t)]; ok {
+			name += inflect.Camelize(up)
 		} else {
-			name += inflect.Camelize(inflect.Singularize(t))
+			name += inflect.Camelize(t)
 		}
 	}
 	return name
