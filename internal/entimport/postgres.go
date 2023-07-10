@@ -3,7 +3,9 @@ package entimport
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/go-openapi/inflect"
 	"github.com/iasthc/atlas/sql/postgres"
 	"github.com/iasthc/atlas/sql/schema"
 
@@ -48,6 +50,12 @@ func (p *Postgres) SchemaMutations(ctx context.Context) ([]schemast.Mutator, err
 			if !excludedTableNames[t.Name] {
 				tables = append(tables, t)
 			}
+		}
+	}
+	if p.inflects != nil {
+		for _, i := range p.inflects {
+			inflect.AddSingular(strings.ToLower(i), strings.ToUpper(i))
+			inflect.AddAcronym(strings.ToUpper(i))
 		}
 	}
 	return schemaMutations(p.field, tables)

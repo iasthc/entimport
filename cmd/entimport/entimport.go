@@ -15,11 +15,13 @@ import (
 var (
 	tablesFlag        tables
 	excludeTablesFlag tables
+	inflect           tables
 )
 
 func init() {
 	flag.Var(&tablesFlag, "tables", "comma-separated list of tables to inspect (all if empty)")
 	flag.Var(&excludeTablesFlag, "exclude-tables", "comma-separated list of tables to exclude")
+	flag.Var(&inflect, "inflect-names", "inflect type and table nanmes")
 }
 
 func main() {
@@ -42,6 +44,7 @@ func main() {
 	i, err := entimport.NewImport(
 		entimport.WithTables(tablesFlag),
 		entimport.WithExcludedTables(excludeTablesFlag),
+		entimport.WithInflects(inflect),
 		entimport.WithDriver(drv),
 	)
 	if err != nil {

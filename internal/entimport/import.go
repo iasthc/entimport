@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/fnv"
+	"strings"
 
+	"github.com/go-openapi/inflect"
 	"github.com/iasthc/atlas/sql/schema"
 	"github.com/iasthc/entimport/internal/mux"
 
@@ -15,7 +18,6 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	entschema "entgo.io/ent/schema"
 	"entgo.io/ent/schema/edge"
-	"github.com/go-openapi/inflect"
 )
 
 const (
@@ -53,6 +55,7 @@ type (
 	ImportOptions struct {
 		tables         []string
 		excludedTables []string
+		inflects       []string
 		schemaPath     string
 		driver         *mux.ImportDriver
 	}
@@ -79,6 +82,12 @@ func WithTables(tables []string) ImportOption {
 func WithExcludedTables(tables []string) ImportOption {
 	return func(i *ImportOptions) {
 		i.excludedTables = tables
+	}
+}
+
+func WithInflects(tables []string) ImportOption {
+	return func(i *ImportOptions) {
+		i.inflects = tables
 	}
 }
 
@@ -174,9 +183,15 @@ func entEdge(nodeName, nodeType string, currentNode *schemast.UpsertSchema, dir 
 	}
 	desc.Type = nodeType
 	desc.Annotations = []entschema.Annotation{
-		entproto.Field(int(tableColumnAttNum[opts.refName][opts.edgeField]) + int(tableOID[opts.refName]) + num),
+		entproto.Field((int(hash(opts.refName)+hash(opts.edgeField)) + num) % 1000),
 	}
 	return e
+}
+
+func hash(s string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(s))
+	return h.Sum32()
 }
 
 // setEdgeField is a function to properly name edge fields.
@@ -243,7 +258,16 @@ func isJoinTable(table *schema.Table) bool {
 }
 
 func typeName(tableName string) string {
-	return inflect.Camelize(inflect.Singularize(tableName))
+	name := ""
+	ts := strings.Split(tableName, "_")
+	for idx, t := range ts {
+		if len(ts) != idx+1 && strings.HasSuffix(t, "s") {
+			name += inflect.Camelize(t)
+		} else {
+			name += inflect.Camelize(inflect.Singularize(t))
+		}
+	}
+	return name
 }
 
 func tableName(typeName string) string {
@@ -278,16 +302,12 @@ func upsertNode(field fieldFunc, table *schema.Table) (*schemast.UpsertSchema, e
 		Name: typeName(table.Name),
 	}
 	upsert.Annotations = []entschema.Annotation{
-		entproto.Message(
-			entproto.PackageName("api.ent.service.v1"),
-		),
+		entproto.Message(),
 		entproto.Service(
 			entproto.Methods(entproto.MethodCreate | entproto.MethodGet | entproto.MethodUpdate | entproto.MethodList | entproto.MethodBatchCreate),
 		),
 	}
-	if tableName(table.Name) != table.Name {
-		upsert.Annotations = append(upsert.Annotations, entsql.Annotation{Table: table.Name})
-	}
+	upsert.Annotations = append(upsert.Annotations, entsql.Annotation{Table: table.Name})
 	fields := make(map[string]ent.Field, len(upsert.Fields))
 	for _, f := range upsert.Fields {
 		fields[f.Descriptor().StorageKey] = f
