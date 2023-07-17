@@ -117,7 +117,7 @@ func (p *Postgres) convertInteger(typ *schema.IntegerType, name string) (f ent.F
 	// bigint - 8 bytes large-range integer	-9223372036854775808 to 9223372036854775807.
 	case "bigint":
 		// Int64 is not used on purpose.
-		f = field.Int(name)
+		f = field.Int64(name)
 	}
 	return f
 }
